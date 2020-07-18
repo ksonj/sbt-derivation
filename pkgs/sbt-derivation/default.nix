@@ -1,4 +1,5 @@
-{ lib, stdenv, callPackage, sbt, gnused, zstd, strip-nondeterminism, file }:
+{ lib, stdenv, callPackage, sbt, gnused, zstd, strip-nondeterminism, file
+, runCommand, makeWrapper }:
 
 { name ? "${args'.pname}-${args'.version}", src, nativeBuildInputs ? [ ]
 , passthru ? { }, patches ? [ ]
@@ -34,12 +35,24 @@ let
     COURSIER_CACHE = "${depsDir}/coursier-cache";
   };
 
+  wrappedStripNondeterminism = if stdenv.isDarwin then
+    (runCommand "strip-nondeterminism" {
+      nativeBuildInputs = [ makeWrapper ];
+    } ''
+      mkdir -p $out/bin
+      makeWrapper ${strip-nondeterminism.fullperl}/bin/perl $out/bin/strip-nondeterminism \
+        --add-flags ${strip-nondeterminism}/bin/strip-nondeterminism
+    '')
+  else
+    strip-nondeterminism;
+
   deps = let
     depsAttrs = (sbtEnv // {
       name = "${if versionInDepsName then name else args'.pname}-deps.tar.zst";
       inherit src patches;
 
-      nativeBuildInputs = [ customSbt gnused zstd strip-nondeterminism file ]
+      nativeBuildInputs =
+        [ customSbt gnused zstd wrappedStripNondeterminism file ]
         ++ (stripOutSbt nativeBuildInputs);
 
       outputHash = depsSha256;
